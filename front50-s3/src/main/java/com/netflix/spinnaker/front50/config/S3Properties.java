@@ -16,18 +16,8 @@
 
 package com.netflix.spinnaker.front50.config;
 
-import org.springframework.boot.context.properties.NestedConfigurationProperty;
-
 public abstract class S3Properties extends S3BucketProperties {
   String rootFolder = "front50";
-
-  @NestedConfigurationProperty S3FailoverProperties failover = new S3FailoverProperties();
-
-  @NestedConfigurationProperty S3EventingProperties eventing = new S3EventingProperties();
-
-  // Front50 retrieves objects in batches of this size. Some S3 compatible store enforce a maximum
-  // number of keys
-  private Integer maxKeys = 10000;
 
   public String getRootFolder() {
     return rootFolder;
@@ -35,99 +25,5 @@ public abstract class S3Properties extends S3BucketProperties {
 
   public void setRootFolder(String rootFolder) {
     this.rootFolder = rootFolder;
-  }
-
-  public Integer getMaxKeys() {
-    return maxKeys;
-  }
-
-  public void setMaxKeys(Integer maxKeys) {
-    this.maxKeys = maxKeys;
-  }
-
-  public S3FailoverProperties getFailover() {
-    return failover;
-  }
-
-  public void setFailover(S3FailoverProperties failover) {
-    this.failover = failover;
-  }
-
-  public boolean isFailoverEnabled() {
-    return failover != null && failover.enabled;
-  }
-
-  public S3EventingProperties getEventing() {
-    return eventing;
-  }
-
-  public void setEventing(S3EventingProperties eventing) {
-    this.eventing = eventing;
-  }
-
-  @Override
-  public String getBucket() {
-    if (isFailoverEnabled()) {
-      return failover.getBucket();
-    }
-    return super.getBucket();
-  }
-
-  @Override
-  public String getRegion() {
-    if (isFailoverEnabled()) {
-      return failover.getRegion();
-    }
-    return super.getRegion();
-  }
-
-  @Override
-  public String getRegionOverride() {
-    if (isFailoverEnabled()) {
-      return failover.getRegionOverride();
-    }
-
-    return super.getRegionOverride();
-  }
-
-  @Override
-  public String getEndpoint() {
-    if (isFailoverEnabled()) {
-      return failover.getEndpoint();
-    }
-    return super.getEndpoint();
-  }
-
-  @Override
-  public String getProxyHost() {
-    if (isFailoverEnabled()) {
-      return failover.getProxyHost();
-    }
-    return super.getProxyHost();
-  }
-
-  @Override
-  public String getProxyPort() {
-    if (isFailoverEnabled()) {
-      return failover.getProxyPort();
-    }
-    return super.getProxyPort();
-  }
-
-  @Override
-  public String getProxyProtocol() {
-    if (isFailoverEnabled()) {
-      return failover.getProxyProtocol();
-    }
-    return super.getProxyProtocol();
-  }
-
-  @Override
-  public Boolean getVersioning() {
-    if (isFailoverEnabled()) {
-      return failover.getVersioning();
-    }
-
-    return super.getVersioning();
   }
 }

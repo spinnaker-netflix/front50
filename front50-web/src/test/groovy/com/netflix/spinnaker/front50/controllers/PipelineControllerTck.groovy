@@ -16,16 +16,10 @@
 
 package com.netflix.spinnaker.front50.controllers
 
-import com.netflix.spectator.api.NoopRegistry
 import com.netflix.spinnaker.front50.ServiceAccountsService
-import com.netflix.spinnaker.front50.model.DefaultObjectKeyLoader
-import com.netflix.spinnaker.front50.model.S3StorageService
-import com.netflix.spinnaker.front50.model.pipeline.DefaultPipelineDAO
 import org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver
 
 import java.util.concurrent.Executors
-import com.amazonaws.ClientConfiguration
-import com.amazonaws.services.s3.AmazonS3Client
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.netflix.spinnaker.front50.model.pipeline.Pipeline
 import com.netflix.spinnaker.front50.model.pipeline.PipelineDAO
@@ -285,7 +279,7 @@ abstract class PipelineControllerTck extends Specification {
 }
 
 @IgnoreIf({ S3TestHelper.s3ProxyUnavailable() })
-class S3PipelineControllerTck extends PipelineControllerTck {
+class SQLPipelineControllerTck extends PipelineControllerTck {
   @Shared
   def scheduler = Schedulers.from(Executors.newFixedThreadPool(1))
 
@@ -294,13 +288,6 @@ class S3PipelineControllerTck extends PipelineControllerTck {
 
   @Override
   PipelineDAO createPipelineDAO() {
-    def amazonS3 = new AmazonS3Client(new ClientConfiguration())
-    amazonS3.setEndpoint("http://127.0.0.1:9999")
-    S3TestHelper.setupBucket(amazonS3, "front50")
-
-    def storageService = new S3StorageService(new ObjectMapper(), amazonS3, "front50", "test", false, "us-east-1", true, 10_000, null)
-    pipelineDAO = new DefaultPipelineDAO(storageService, scheduler,new DefaultObjectKeyLoader(storageService), 0,false, new NoopRegistry())
-
     return pipelineDAO
   }
 }

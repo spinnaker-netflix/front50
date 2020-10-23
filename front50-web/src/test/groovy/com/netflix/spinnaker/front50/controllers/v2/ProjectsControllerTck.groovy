@@ -17,16 +17,9 @@
 
 package com.netflix.spinnaker.front50.controllers.v2
 
-import com.amazonaws.ClientConfiguration
-import com.amazonaws.services.s3.AmazonS3Client
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.netflix.spectator.api.NoopRegistry
 import com.netflix.spinnaker.front50.controllers.SimpleExceptionHandlerExceptionResolver
 import com.netflix.spinnaker.kork.web.exceptions.NotFoundException
-import com.netflix.spinnaker.front50.model.DefaultObjectKeyLoader
-import com.netflix.spinnaker.front50.model.S3StorageService
-import com.netflix.spinnaker.front50.model.StorageService
-import com.netflix.spinnaker.front50.model.project.DefaultProjectDAO
 import com.netflix.spinnaker.front50.model.project.Project
 import com.netflix.spinnaker.front50.model.project.ProjectDAO
 import com.netflix.spinnaker.front50.utils.S3TestHelper
@@ -35,7 +28,6 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver
-import rx.schedulers.Schedulers
 import spock.lang.*
 
 import java.util.concurrent.Executors
@@ -318,12 +310,12 @@ class S3ProjectsControllerTck extends ProjectsControllerTck {
 
   @Override
   ProjectDAO createProjectDAO() {
-    def amazonS3 = new AmazonS3Client(new ClientConfiguration())
-    amazonS3.setEndpoint("http://127.0.0.1:9999")
-    S3TestHelper.setupBucket(amazonS3, "front50")
-
-    StorageService storageService = new S3StorageService(new ObjectMapper(), amazonS3, "front50", "test", false, "us-east-1", true, 10_000, null)
-    projectDAO = new DefaultProjectDAO(storageService, scheduler, new DefaultObjectKeyLoader(storageService), 0, false, new NoopRegistry())
+//    def amazonS3 = new AmazonS3Client(new ClientConfiguration())
+//    amazonS3.setEndpoint("http://127.0.0.1:9999")
+//    S3TestHelper.setupBucket(amazonS3, "front50")
+//
+//    StorageService storageService = new S3StorageService(new ObjectMapper(), amazonS3, "front50", "test", false, "us-east-1", true, 10_000, null)
+//    projectDAO = new DefaultProjectDAO(storageService, scheduler, new DefaultObjectKeyLoader(storageService), 0, false, new NoopRegistry())
 
     return projectDAO
   }

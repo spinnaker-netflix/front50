@@ -16,8 +16,6 @@
 
 package com.netflix.spinnaker.front50.config;
 
-import com.netflix.spinnaker.front50.model.S3StorageService.ServerSideEncryption;
-
 public class S3BucketProperties {
   private String bucket;
   private String region;
@@ -110,5 +108,10 @@ public class S3BucketProperties {
 
   public void setServerSideEncryption(ServerSideEncryption serverSideEncryption) {
     this.serverSideEncryption = serverSideEncryption;
+  }
+
+  public enum ServerSideEncryption {
+    AWSKMS,
+    AES256
   }
 }
