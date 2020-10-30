@@ -19,36 +19,39 @@ package com.netflix.spinnaker.front50.controllers
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.netflix.spectator.api.NoopRegistry
+import com.netflix.spinnaker.front50.model.DefaultObjectKeyLoader
+import com.netflix.spinnaker.front50.model.SqlStorageService
+import com.netflix.spinnaker.front50.model.notification.DefaultNotificationDAO
 import com.netflix.spinnaker.front50.model.notification.HierarchicalLevel
 import com.netflix.spinnaker.front50.model.notification.Notification
 import com.netflix.spinnaker.front50.model.notification.NotificationDAO
-import com.netflix.spinnaker.front50.utils.S3TestHelper
+import com.netflix.spinnaker.kork.sql.config.SqlRetryProperties
+import com.netflix.spinnaker.kork.sql.test.SqlTestUtil
+import io.github.resilience4j.circuitbreaker.internal.InMemoryCircuitBreakerRegistry
 import org.springframework.context.support.StaticMessageSource
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import rx.schedulers.Schedulers
-import spock.lang.IgnoreIf
+import spock.lang.AutoCleanup
 import spock.lang.Shared
 import spock.lang.Specification
 import spock.lang.Subject
 
+import java.time.Clock
 import java.util.concurrent.Executors
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 
 abstract class NotificationControllerTck extends Specification {
-  @Shared
   ObjectMapper objectMapper = new ObjectMapper()
 
-  @Shared
   MockMvc mockMvc
 
-  @Shared
   NotificationController controller
 
-  @Subject
   NotificationDAO dao
 
   def global = new Notification([
@@ -65,10 +68,7 @@ abstract class NotificationControllerTck extends Specification {
 
   void setup() {
     this.dao = createNotificationDAO()
-    this.controller = new NotificationController(
-        notificationDAO: dao,
-        messageSource: new StaticMessageSource()
-    )
+    this.controller = new NotificationController(dao)
     this.mockMvc = MockMvcBuilders.standaloneSetup(controller).build()
   }
 
@@ -174,23 +174,38 @@ abstract class NotificationControllerTck extends Specification {
 }
 
 
-@IgnoreIf({ S3TestHelper.s3ProxyUnavailable() })
-class SQLNotificationControllerTck extends NotificationControllerTck {
-  @Shared
+class SqlNotificationControllerTck extends NotificationControllerTck {
   def scheduler = Schedulers.from(Executors.newFixedThreadPool(1))
 
-  @Shared
-  NotificationDAO notificationDAO
+  @AutoCleanup("close")
+  SqlTestUtil.TestDatabase currentDatabase = SqlTestUtil.initTcMysqlDatabase()
+
+  void cleanup() {
+    SqlTestUtil.cleanupDb(currentDatabase.context)
+  }
 
   @Override
   NotificationDAO createNotificationDAO() {
-//    def amazonS3 = new AmazonS3Client(new ClientConfiguration())
-//    amazonS3.setEndpoint("http://127.0.0.1:9999")
-//    S3TestHelper.setupBucket(amazonS3, "front50")
-//
-//    def storageService = new S3StorageService(new ObjectMapper(), amazonS3, "front50", "test", false, "us-east-1", true, 10_000, null)
-//    notificationDAO = new DefaultNotificationDAO(storageService, scheduler, new DefaultObjectKeyLoader(storageService), 0, false, new NoopRegistry())
+    def registry = new NoopRegistry()
 
-    return notificationDAO
+    def storageService = new SqlStorageService(
+      new ObjectMapper(),
+      registry,
+      currentDatabase.context,
+      Clock.systemDefaultZone(),
+      new SqlRetryProperties(),
+      100,
+      "default"
+    )
+
+    return new DefaultNotificationDAO(
+      storageService,
+      scheduler,
+      new DefaultObjectKeyLoader(storageService),
+      0,
+      false,
+      new NoopRegistry(),
+      new InMemoryCircuitBreakerRegistry()
+    )
   }
 }

@@ -16,14 +16,23 @@
 
 package com.netflix.spinnaker.front50.controllers
 
+import com.netflix.spectator.api.NoopRegistry
 import com.netflix.spinnaker.front50.ServiceAccountsService
-import org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver
+import com.netflix.spinnaker.front50.model.DefaultObjectKeyLoader
+import com.netflix.spinnaker.front50.model.SqlStorageService
+import com.netflix.spinnaker.front50.model.pipeline.DefaultPipelineDAO
+import com.netflix.spinnaker.kork.sql.config.SqlRetryProperties
+import com.netflix.spinnaker.kork.sql.test.SqlTestUtil
+import com.netflix.spinnaker.kork.web.exceptions.ExceptionMessageDecorator
+import com.netflix.spinnaker.kork.web.exceptions.GenericExceptionHandlers
+import io.github.resilience4j.circuitbreaker.internal.InMemoryCircuitBreakerRegistry
+import org.springframework.beans.factory.ObjectProvider
 
+import java.time.Clock
 import java.util.concurrent.Executors
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.netflix.spinnaker.front50.model.pipeline.Pipeline
 import com.netflix.spinnaker.front50.model.pipeline.PipelineDAO
-import com.netflix.spinnaker.front50.utils.S3TestHelper
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -37,14 +46,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 
 abstract class PipelineControllerTck extends Specification {
-
   static final int OK = 200
   static final int BAD_REQUEST = 400
   static final int UNPROCESSABLE_ENTITY = 422
 
   MockMvc mockMvc
 
-  @Subject PipelineDAO pipelineDAO
+  @Subject
+  PipelineDAO pipelineDAO
   def serviceAccountsService
 
   void setup() {
@@ -52,15 +61,21 @@ abstract class PipelineControllerTck extends Specification {
     this.serviceAccountsService = Mock(ServiceAccountsService)
 
     mockMvc = MockMvcBuilders
-      .standaloneSetup(new PipelineController(pipelineDAO, new ObjectMapper(), serviceAccountsService, Optional.empty()))
-      .setHandlerExceptionResolvers(createExceptionResolver())
+      .standaloneSetup(
+        new PipelineController(
+          pipelineDAO,
+          new ObjectMapper(),
+          Optional.of(serviceAccountsService),
+          Collections.emptyList(),
+          Optional.empty()
+        )
+      )
+      .setControllerAdvice(
+        new GenericExceptionHandlers(
+          new ExceptionMessageDecorator(Mock(ObjectProvider))
+        )
+      )
       .build()
-  }
-
-  private static ExceptionHandlerExceptionResolver createExceptionResolver() {
-    def resolver = new SimpleExceptionHandlerExceptionResolver()
-    resolver.afterPropertiesSet()
-    return resolver
   }
 
   abstract PipelineDAO createPipelineDAO()
@@ -151,7 +166,7 @@ abstract class PipelineControllerTck extends Specification {
 
     then:
     response.status == BAD_REQUEST
-    response.errorMessage == "The provided id ${pipeline2.id} doesn't match the pipeline id ${pipeline1.id}"
+    response.errorMessage == "The provided id ${pipeline1.id} doesn't match the pipeline id ${pipeline2.id}"
   }
 
   @Unroll
@@ -278,16 +293,38 @@ abstract class PipelineControllerTck extends Specification {
   }
 }
 
-@IgnoreIf({ S3TestHelper.s3ProxyUnavailable() })
-class SQLPipelineControllerTck extends PipelineControllerTck {
-  @Shared
+class SqlPipelineControllerTck extends PipelineControllerTck {
   def scheduler = Schedulers.from(Executors.newFixedThreadPool(1))
 
-  @Shared
-  PipelineDAO pipelineDAO
+  @AutoCleanup("close")
+  SqlTestUtil.TestDatabase currentDatabase = SqlTestUtil.initTcMysqlDatabase()
+
+  void cleanup() {
+    SqlTestUtil.cleanupDb(currentDatabase.context)
+  }
 
   @Override
   PipelineDAO createPipelineDAO() {
-    return pipelineDAO
+    def registry = new NoopRegistry()
+
+    def storageService = new SqlStorageService(
+      new ObjectMapper(),
+      registry,
+      currentDatabase.context,
+      Clock.systemDefaultZone(),
+      new SqlRetryProperties(),
+      100,
+      "default"
+    )
+
+    return new DefaultPipelineDAO(
+      storageService,
+      scheduler,
+      new DefaultObjectKeyLoader(storageService),
+      0,
+      false,
+      new NoopRegistry(),
+      new InMemoryCircuitBreakerRegistry()
+    )
   }
 }

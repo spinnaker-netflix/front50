@@ -25,14 +25,18 @@ import com.netflix.spinnaker.front50.model.SqlStorageService
 import com.netflix.spinnaker.front50.model.application.ApplicationService
 import com.netflix.spinnaker.front50.validator.HasEmailValidator
 import com.netflix.spinnaker.front50.validator.HasNameValidator
+import com.netflix.spinnaker.kork.api.exceptions.ExceptionMessage
 import com.netflix.spinnaker.kork.sql.config.SqlRetryProperties
 import com.netflix.spinnaker.kork.sql.test.SqlTestUtil
+import com.netflix.spinnaker.kork.web.exceptions.ExceptionMessageDecorator
+import com.netflix.spinnaker.kork.web.exceptions.GenericExceptionHandlers
 import com.netflix.spinnaker.kork.web.exceptions.NotFoundException
 import com.netflix.spinnaker.front50.model.DefaultObjectKeyLoader
 import com.netflix.spinnaker.front50.model.application.Application
 import com.netflix.spinnaker.front50.model.application.ApplicationDAO
 import com.netflix.spinnaker.front50.model.application.DefaultApplicationDAO
 import io.github.resilience4j.circuitbreaker.internal.InMemoryCircuitBreakerRegistry
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.support.StaticMessageSource
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
@@ -55,29 +59,28 @@ import com.netflix.spinnaker.front50.model.pipeline.PipelineDAO
 import com.netflix.spinnaker.front50.model.pipeline.PipelineStrategyDAO
 
 abstract class ApplicationsControllerTck extends Specification {
-  @Shared
   ObjectMapper objectMapper = new ObjectMapper()
 
-  @Shared
   MockMvc mockMvc
-
-  @Shared
   ApplicationsController controller
+  ApplicationService applicationService
+
+  def projectDAO = Mock(ProjectDAO)
+  def pipelineDAO = Mock(PipelineDAO)
+  def pipelineStrategyDAO = Mock(PipelineStrategyDAO)
+  def fiatStatus = Mock(FiatStatus)
 
   @Subject
   ApplicationDAO dao
-
-  FiatStatus fiatStatus = Mock(FiatStatus)
-  ApplicationService applicationService
 
   void setup() {
     this.dao = createApplicationDAO()
     this.applicationService = new ApplicationService(
       dao,
-      Mock(ProjectDAO),
+      projectDAO,
       Mock(NotificationDAO),
-      Mock(PipelineDAO),
-      Mock(PipelineStrategyDAO),
+      pipelineDAO,
+      pipelineStrategyDAO,
       [new HasNameValidator(), new HasEmailValidator()],
       Collections.emptyList(),
       Optional.empty()
@@ -91,14 +94,22 @@ abstract class ApplicationsControllerTck extends Specification {
       fiatStatus,
       applicationService
     )
-    this.mockMvc = MockMvcBuilders.standaloneSetup(controller).build()
+
+    this.mockMvc = MockMvcBuilders
+      .standaloneSetup(controller)
+      .setControllerAdvice(
+        new GenericExceptionHandlers(
+          new ExceptionMessageDecorator(Mock(ObjectProvider))
+        )
+      )
+      .build()
   }
 
   abstract ApplicationDAO createApplicationDAO()
 
   def "should create a new application"() {
     given:
-    def sampleApp = new Application(name: "SAMPLEAPP", type: "Standalone App", email: "web@netflix.com", lastModifiedBy: "anonymous")
+    def sampleApp = new Application(name: "SAMPLEAPP", email: "web@netflix.com", lastModifiedBy: "anonymous")
 
     when:
     def response = mockMvc
@@ -160,8 +171,7 @@ abstract class ApplicationsControllerTck extends Specification {
 
   def "should update an application"() {
     given:
-    def owner = "Andy McEntee"
-    def sampleApp = new Application(name: "SAMPLEAPP", email: "web@netflix.com", owner: owner, lastModifiedBy: "anonymous")
+    def sampleApp = new Application(name: "SAMPLEAPP", email: "web@netflix.com", lastModifiedBy: "anonymous")
     dao.create("SAMPLEAPP", new Application())
 
     when:
@@ -296,6 +306,9 @@ abstract class ApplicationsControllerTck extends Specification {
     )
 
     then:
+    1 * projectDAO.all() >> { return Collections.emptyList() }
+    1 * pipelineDAO.getPipelinesByApplication("sampleapp") >> { return Collections.emptyList() }
+    1 * pipelineStrategyDAO.getPipelinesByApplication("sampleapp") >> { return Collections.emptyList() }
     response.andExpect status().isNoContent()
 
     when:
@@ -371,13 +384,8 @@ abstract class ApplicationsControllerTck extends Specification {
 }
 
 class SqlApplicationsControllerTck extends ApplicationsControllerTck {
-  @Shared
   def scheduler = Schedulers.from(Executors.newFixedThreadPool(1))
 
-  @Shared
-  DefaultApplicationDAO applicationDAO
-
-  @Shared
   @AutoCleanup("close")
   SqlTestUtil.TestDatabase currentDatabase = SqlTestUtil.initTcMysqlDatabase()
 
@@ -398,7 +406,8 @@ class SqlApplicationsControllerTck extends ApplicationsControllerTck {
       100,
       "default"
     )
-    applicationDAO = new DefaultApplicationDAO(
+
+    return new DefaultApplicationDAO(
       storageService,
       scheduler,
       new DefaultObjectKeyLoader(storageService),
@@ -407,7 +416,6 @@ class SqlApplicationsControllerTck extends ApplicationsControllerTck {
       new NoopRegistry(),
       new InMemoryCircuitBreakerRegistry()
     )
-    return applicationDAO
   }
 }
 
